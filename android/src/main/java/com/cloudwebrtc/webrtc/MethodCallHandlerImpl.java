@@ -786,6 +786,22 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         result.success(null);
         break;
       }
+      case "videoRendererArmPresentation": {
+        Integer textureId = call.argument("textureId");
+        FlutterRTCVideoRenderer renderer = textureId == null ? null : renders.get(textureId);
+        if (renderer == null) {
+          resultError("videoRendererArmPresentation", "呈现器不存在", result);
+          break;
+        }
+        try {
+          String timestamp = call.argument("rtpTimestamp");
+          renderer.armPresentation(call.argument("revision"), Long.parseLong(timestamp));
+          result.success(null);
+        } catch (IllegalArgumentException e) {
+          resultError("videoRendererArmPresentation", "呈现边界无效", result);
+        }
+        break;
+      }
       case "videoRendererSetSrcObject": {
         int textureId = call.argument("textureId");
         String streamId = call.argument("streamId");

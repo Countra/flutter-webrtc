@@ -74,8 +74,10 @@ if (kotlinExt?.hasProperty('compilerOptions')) {
     }
 }
 
+apply from: file('webrtc-sdk.gradle')
+
 dependencies {
-    implementation 'io.github.webrtc-sdk:android:150.7871.04'
+    implementation files(flutterWebrtcAndroidAarFile)
     implementation 'com.github.davidliu:audioswitch:039a35aefab7747c557242fa216c9ea11743b604'
     implementation 'androidx.annotation:annotation:1.1.0'
     testImplementation 'junit:junit:4.13.2'

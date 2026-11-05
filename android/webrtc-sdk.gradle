@@ -1,0 +1,13 @@
+// 宿主负责来源及完整性校验；插件只接收明确的 SDK 文件，不依赖宿主目录布局。
+def sdkPath = rootProject.findProperty('flutterWebrtcAndroidAar')
+if (!(sdkPath instanceof File) && !(sdkPath instanceof CharSequence)) {
+    throw new GradleException('请由宿主配置 flutterWebrtcAndroidAar，指向带 RTP 呈现回执的配套 WebRTC AAR。')
+}
+if (sdkPath.toString().trim().isEmpty()) {
+    throw new GradleException('flutterWebrtcAndroidAar 不能为空。')
+}
+def sdkFile = rootProject.file(sdkPath).canonicalFile
+if (!sdkFile.isFile() || !sdkFile.name.endsWith('.aar')) {
+    throw new GradleException('flutterWebrtcAndroidAar 必须指向存在的 AAR 文件。')
+}
+project.ext.flutterWebrtcAndroidAarFile = sdkFile

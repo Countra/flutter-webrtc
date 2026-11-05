@@ -11,6 +11,7 @@ import com.cloudwebrtc.webrtc.utils.EglUtils;
 import java.util.List;
 
 import org.webrtc.EglBase;
+import org.webrtc.EglRenderer;
 import org.webrtc.MediaStream;
 import org.webrtc.RendererCommon.RendererEvents;
 import org.webrtc.VideoTrack;
@@ -26,8 +27,27 @@ public class FlutterRTCVideoRenderer implements EventChannel.StreamHandler {
     private String mediaStreamId;
 
     private String ownerTag;
+    private volatile PresentedFrameGate presentation = new PresentedFrameGate();
+    private EglRenderer.PresentedFrameListener presentationListener;
+
+    public void armPresentation(String revision, long timestamp) {
+        PresentedFrameGate current = presentation;
+        publishPresentation(current, current.arm(revision, timestamp));
+    }
+
+    private void publishPresentation(PresentedFrameGate source, PresentedFrameGate.Receipt receipt) {
+        EventChannel.EventSink sink = eventSink;
+        if (source != presentation || receipt == null || sink == null) return;
+        ConstraintsMap params = new ConstraintsMap();
+        params.putString("event", "didFramePresented");
+        params.putString("revision", receipt.revision);
+        params.putString("rtpTimestamp", Long.toString(receipt.timestamp));
+        params.putInt("id", id);
+        sink.success(params.toMap());
+    }
 
     public void Dispose() {
+        presentation.close();
         setVideoTrack(null);
         if (surfaceTextureRenderer != null) {
             surfaceTextureRenderer.release();
@@ -99,7 +119,7 @@ public class FlutterRTCVideoRenderer implements EventChannel.StreamHandler {
     private String videoTrackId;
 
     EventChannel eventChannel;
-    EventChannel.EventSink eventSink;
+    volatile EventChannel.EventSink eventSink;
 
     public FlutterRTCVideoRenderer(TextureRegistry.SurfaceProducer producer) {
         this.surfaceTextureRenderer = new SurfaceTextureRenderer("");
@@ -222,6 +242,11 @@ public class FlutterRTCVideoRenderer implements EventChannel.StreamHandler {
         VideoTrack oldValue = this.videoTrack;
 
         if (oldValue != videoTrack) {
+            presentation.close();
+            if (presentationListener != null) {
+                surfaceTextureRenderer.removePresentedFrameListener(presentationListener);
+                presentationListener = null;
+            }
             if (oldValue != null) {
                 removeRendererFromVideoTrack();
             }
@@ -262,6 +287,11 @@ public class FlutterRTCVideoRenderer implements EventChannel.StreamHandler {
             surfaceTextureRenderer.init(sharedContext, rendererEvents);
             surfaceTextureRenderer.surfaceCreated(producer);
 
+            // 每个实际 Track 独立拥有门禁；旧渲染回调不能填充新 Track 的呈现记录。
+            PresentedFrameGate current = new PresentedFrameGate();
+            presentation = current;
+            presentationListener = timestamp -> publishPresentation(current, current.presented(timestamp));
+            surfaceTextureRenderer.addPresentedFrameListener(presentationListener);
             videoTrack.addSink(surfaceTextureRenderer);
         }
     }

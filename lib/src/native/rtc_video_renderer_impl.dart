@@ -51,12 +51,39 @@ class RTCVideoRenderer extends ValueNotifier<RTCVideoValue>
   @override
   Function? onFirstFrameRendered;
 
+  // 版本由调用方指定，帧身份必须来自原生实际呈现，不能用播放器时钟推断。
+  void Function(String revision, int rtpTimestamp)? onFramePresented;
+  String? _presentationRevision;
+  int _presentationMinimum = 0;
+
+  Future<void> armPresentation(String revision, int rtpTimestamp) async {
+    if (_disposed || _textureId == null) {
+      throw StateError('呈现器尚未就绪');
+    }
+    if (revision.isEmpty || rtpTimestamp < 0 || rtpTimestamp > 0xffffffff) {
+      throw ArgumentError('呈现边界无效');
+    }
+    _presentationRevision = revision;
+    _presentationMinimum = rtpTimestamp;
+    try {
+      await WebRTC.invokeMethod('videoRendererArmPresentation', {
+        'textureId': _textureId,
+        'revision': revision,
+        'rtpTimestamp': '$rtpTimestamp',
+      });
+    } catch (_) {
+      if (_presentationRevision == revision) _presentationRevision = null;
+      rethrow;
+    }
+  }
+
   @override
   set srcObject(MediaStream? stream) {
     if (_disposed) {
       throw 'Can\'t set srcObject: The RTCVideoRenderer is disposed';
     }
     if (textureId == null) throw 'Call initialize before setting the stream';
+    _presentationRevision = null;
     _srcObject = stream;
     WebRTC.invokeMethod('videoRendererSetSrcObject', <String, dynamic>{
       'textureId': textureId,
@@ -76,6 +103,7 @@ class RTCVideoRenderer extends ValueNotifier<RTCVideoValue>
       throw 'Can\'t set srcObject: The RTCVideoRenderer is disposed';
     }
     if (_textureId == null) throw 'Call initialize before setting the stream';
+    _presentationRevision = null;
     _srcObject = stream;
     var oldTextureId = _textureId;
     try {
@@ -96,6 +124,7 @@ class RTCVideoRenderer extends ValueNotifier<RTCVideoValue>
   @override
   Future<void> dispose() async {
     if (_disposed) return;
+    _presentationRevision = null;
     await _eventSubscription?.cancel();
     _eventSubscription = null;
     if (_textureId != null) {
@@ -132,6 +161,19 @@ class RTCVideoRenderer extends ValueNotifier<RTCVideoValue>
       case 'didFirstFrameRendered':
         value = value.copyWith(renderVideo: renderVideo);
         onFirstFrameRendered?.call();
+        break;
+      case 'didFramePresented':
+        final revision = map['revision'];
+        final timestamp = int.tryParse('${map['rtpTimestamp']}');
+        if (revision is String &&
+            revision == _presentationRevision &&
+            timestamp != null &&
+            timestamp >= 0 &&
+            timestamp <= 0xffffffff &&
+            ((timestamp - _presentationMinimum) & 0xffffffff) < 0x80000000) {
+          _presentationRevision = null;
+          onFramePresented?.call(revision, timestamp);
+        }
         break;
     }
   }
