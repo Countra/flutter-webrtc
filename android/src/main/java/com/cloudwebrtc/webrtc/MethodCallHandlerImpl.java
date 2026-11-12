@@ -2232,8 +2232,13 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       res = peerConnection.addIceCandidate(candidate);
     } else {
       resultError("peerConnectionAddICECandidate", "peerConnection is null", result);
+      return;
     }
-    result.success(res);
+    if (!res) {
+      resultError("peerConnectionAddICECandidate", "candidate rejected", result);
+      return;
+    }
+    result.success(null);
   }
 
   public void peerConnectionGetStats(String trackId, String id, final Result result) {
